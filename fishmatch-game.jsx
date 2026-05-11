@@ -103,6 +103,7 @@ export default function App() {
   const [flash,  setFlash]  = useState(null); // 'good' | 'bad' | null
   const [timeLeft, setTimeLeft] = useState(ROUND_SECONDS); // integer for display
   const [roundPeak, setRoundPeak] = useState(0);           // peak streak this round
+  const [showHowTo, setShowHowTo] = useState(false);       // how-to-play overlay
   const [, force] = useState(0);
   const forceRender = useCallback(() => force(x => (x + 1) & 0xffff), []);
 
@@ -219,10 +220,21 @@ export default function App() {
         }
       }
 
+      // ---- Speed ramp (TIMED mode only) ----
+      // Fish accelerate from 1.0x at round start to ~2.2x at round end.
+      // Gentle ease-in so the first few seconds feel like the current game
+      // and the urgency builds rather than slaps the player.
+      let speedMul = 1;
+      if (mode === 'timed') {
+        const elapsed = ROUND_SECONDS - timeLeftRef.current;
+        const t = Math.min(1, elapsed / ROUND_SECONDS);
+        speedMul = 1 + Math.pow(t, 1.4) * 1.2;
+      }
+
       // Move all fish; apply transforms directly to DOM
       for (let i = 0; i < fishRef.current.length; i++) {
         const f = fishRef.current[i];
-        if (!f.caught) f.x += f.speed * f.dir * dt;
+        if (!f.caught) f.x += f.speed * f.dir * dt * speedMul;
         const el = elsRef.current[f.id];
         if (el) {
           // Caught fish do a quick scale+fade
@@ -396,7 +408,57 @@ export default function App() {
       <style>{globalCSS}</style>
 
       {screen === 'splash' && (
-        <SplashScreen best={best} onStart={goToModeSelect} />
+        <SplashScreen best={best} onStart={goToModeSelect} onHowTo={() => setShowHowTo(true)} />
+      )}
+
+      {/* How-to-play overlay (reachable from splash) */}
+      {showHowTo && (
+        <div style={styles.pauseOverlay} onClick={() => setShowHowTo(false)}>
+          <div style={styles.pauseCard} onClick={e => e.stopPropagation()}>
+            <div style={styles.pauseTitle}>how to play</div>
+
+            <div style={styles.howToSection}>
+              <div style={styles.howToHeader}>THE GOAL</div>
+              <div style={styles.howToBody}>
+                Build the longest streak of matching fish you can.
+              </div>
+            </div>
+
+            <div style={styles.howToSection}>
+              <div style={styles.howToHeader}>THE RULES</div>
+              <div style={styles.howToBody}>
+                <div style={styles.howToRule}>
+                  <span style={styles.howToBullet}>1</span>
+                  <span>Tap any fish — that species becomes your target.</span>
+                </div>
+                <div style={styles.howToRule}>
+                  <span style={styles.howToBullet}>2</span>
+                  <span>Tap another of the same species to grow your streak.</span>
+                </div>
+                <div style={styles.howToRule}>
+                  <span style={styles.howToBullet}>3</span>
+                  <span>Tap a different species and the chain resets — that fish becomes the new target.</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.howToSection}>
+              <div style={styles.howToHeader}>THE MODES</div>
+              <div style={styles.howToBody}>
+                <div style={styles.howToMode}>
+                  <span style={styles.howToModeName}>relax</span>
+                  <span>— untimed, end when you want</span>
+                </div>
+                <div style={styles.howToMode}>
+                  <span style={styles.howToModeName}>timed</span>
+                  <span>— 20 seconds. The fish speed up as the clock runs out.</span>
+                </div>
+              </div>
+            </div>
+
+            <button onClick={() => setShowHowTo(false)} style={styles.bigBtn}>Got it</button>
+          </div>
+        </div>
       )}
 
       {screen === 'modeSelect' && (
@@ -626,7 +688,7 @@ export default function App() {
 }
 
 // ============ SPLASH ============
-function SplashScreen({ best, onStart }) {
+function SplashScreen({ best, onStart, onHowTo }) {
   // Decorative fish drifting across the splash
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -689,6 +751,10 @@ function SplashScreen({ best, onStart }) {
             style={styles.startBtnLabel}
             draggable={false}
           />
+        </button>
+
+        <button onClick={onHowTo} style={styles.howToLink}>
+          how to play
         </button>
 
         {best > 0 && (
@@ -914,6 +980,74 @@ const styles = {
     color: COLORS.inkSoft,
     letterSpacing: 0.3,
     marginTop: 18,
+  },
+  howToLink: {
+    fontFamily: "'Fraunces', serif",
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: COLORS.inkSoft,
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    display: 'block',
+    margin: '14px auto 0',
+    padding: '6px 14px',
+    textDecoration: 'underline',
+    textDecorationStyle: 'dotted',
+    textUnderlineOffset: '4px',
+    letterSpacing: 0.2,
+    WebkitTapHighlightColor: 'transparent',
+  },
+  // How-to-play overlay
+  howToSection: {
+    width: '100%',
+    marginBottom: 18,
+    textAlign: 'left',
+  },
+  howToHeader: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 2.5,
+    color: COLORS.inkSoft,
+    marginBottom: 8,
+  },
+  howToBody: {
+    fontFamily: "'DM Sans', sans-serif",
+    fontSize: 14,
+    lineHeight: 1.5,
+    color: COLORS.ink,
+  },
+  howToRule: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 6,
+  },
+  howToBullet: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    background: COLORS.brandBlue,
+    color: COLORS.paper,
+    fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 700,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  howToMode: {
+    marginBottom: 4,
+  },
+  howToModeName: {
+    fontFamily: "'Fraunces', serif",
+    fontStyle: 'italic',
+    fontWeight: 600,
+    color: COLORS.brandBlue,
+    marginRight: 4,
   },
   bestBadge: {
     fontFamily: "'DM Sans', sans-serif",
